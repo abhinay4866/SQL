@@ -1,0 +1,19 @@
+select 
+
+v.name
+,v.email
+,v.owner_email
+,string_agg( sa.name, ', ')
+,count(va.id)
+
+from vendors v
+
+join vendor_service_areas vs on vs.vendor_id = v.id
+join service_areas sa on sa.id = vs.service_area_id
+join vendor_assignments va on va.vendor_id = v.id and current is true and va.created_at > current_date - 360
+join reservations r on r.id = va.reservation_id and r.vehicle_type_id in (6, 7)
+
+where v.name in ('Olympus Worldwide', 'Southeastern Stages Inc', 'Sedans Inc.', 'Clark Travel', 'Capital City Limousine', 'Academy Bus', 'LSA Corporate Car', 'DPV Transportation', 'A Yankee Line', 'Horizon Coach Lines', 'Sunway Charters', 'Midwest Motor Coach', 'Windy City Limousine', 'Presidential Limousines', 'Arrow Stage Lines Denver', 'Horizon Coach Lines', 'Brentwood Limousine', 'Miller Transportation', 'Cavallo Bus Lines', 'Driver Provider', 'Earth Buses LLC', 'Gold Shield', 'Lamers', 'Royal Limousines', 'Riteway Executive Sedan Limo', 'Andrus Limousine', 'Cadillac Chauffeur Services', 'Signature Limousine (Nashville)', 'Limousine Livery', 'H&B Super Express', 'Small World Tours & Cruises', 'Celebrity Limousine', 'Eagle Chauffeured Services', 'Sterling Limousine', 'Delaware Express Tours', 'Klein Transportation', 'American Explorer Motorcoach', 'Arizona Limousines', 'Regency Transportation Group', 'All Star Limousines PIT', 'James Limousine Service', 'Winn Transportation', 'All Resort Limousine', 'AITS-MRY', 'United Car Services', 'Coach 21', 'American Stage Tours', 'BEST Transportation', 'GEM Transportation, LLC', 'Advantage Limousine', 'Klassy Koach', 'Travel by Bus'
+)
+
+group by v.id
