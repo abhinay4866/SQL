@@ -1,0 +1,83 @@
+--no_cache
+with group_notes as (
+    select
+        notes.entity_id                               as group_id
+      , string_agg(distinct notes.text, ', ' :: text) as note_text
+    from notes
+    where entity_type = 'Group'
+    group by notes.entity_id
+),
+
+win_rate as (
+  
+select 
+  
+    count(case when g.status in ('invoiced') then 1 end)*1.0 / count(g.id)*1.00 as rate
+  , g.travel_coordination_profile_id as id
+  ,count(g.id) total
+  
+  from groups g
+  group by 2
+  
+),
+
+comp_win_rate as (
+  
+select 
+  
+    count(case when g.status in ('invoiced') then 1 end)*1.0 / count(g.id)*1.00 as rate
+  , tc.company_id as id
+  ,count(g.id) total
+  
+  from groups g
+  join travel_coordination_profiles tc on tc.id = g.travel_coordination_profile_id
+  group by 2
+  
+)
+  
+select
+    '['||g.id||'](https://core.savoya.net/#/savoya/groups/' || g.id || ')'                  as "Group ID"
+, po.first_name                  as "Owner"
+, date(g.created_at) as "Requested"
+  , '['||c.name||'](https://core.savoya.net/#/savoya/companies/' || c.id || ')'                as "Company"
+  , concat(sales.first_name,' ',sales.last_name)                  as "Sales Rep"
+  , '['||concat(tcp.first_name,' ',tcp.last_name)||'](https://core.savoya.net/#/savoya/travel-coordination-profiles/' || tcp.id || '/edit)'                  as "Planner"
+, w.rate as "TC Win Rate"
+, w.total as "Total TC Bids"
+, cw.rate as "Company Win rate"
+, cw.total as "Total Company Bids"
+  , g.passenger_count                  as "Pax"
+  ,  case g.planner_type
+when 'new_planner'        then 'New Planner'
+when 'existing_planner'   then 'Existing'
+when 'growing_planner'    then 'Growing'
+when 'new_account'        then 'New Account'
+end                       as "Planner Type"
+  , date(g.start_date)    as "Start Date"
+  , date(g.end_date)      as "End Date"
+  , sa.name               as "Service Area"
+  , case g.status
+    when 'prepared'         then 'Prepared'
+    when 'assigned'         then 'Assigned'
+    when 'contracted'       then 'Contracted'
+    when 'pricing_started'  then 'Pricing Started'
+    when 'pricing_sent'     then 'Pricing Sent'
+    when 'completed'        then 'Completed'
+    when 'new_rfp'          then 'New RFP'
+    when 'lost'             then 'Lost'
+    end                   as "Status"
+  , group_notes.note_text as "Notes"
+
+from groups g
+  left join group_notes on group_id = g.id
+  left join travel_coordination_profiles tcp on g.travel_coordination_profile_id = tcp.id
+  left join companies c on c.id = tcp.company_id
+  left join users sales on c.sales_agent_id = sales.id
+  left join service_areas sa on sa.id = g.service_area_id
+  left join users po on po.id=g.pricing_owner_id
+  left join win_rate w on w.id = g.travel_coordination_profile_id
+  left join comp_win_rate cw on cw.id = tcp.company_id
+
+where g.status in ('new_rfp', 'pricing_started')
+
+order by 3,9
