@@ -1,0 +1,156 @@
+--no_cache
+
+with todo_counts as (
+  
+  select 
+    t.user_id as id  
+  , count(t.id) as todos
+  , count(case when t.type = 'OnsiteCallTodo' then 1 end) as onsites
+  , count(case when t.type = 'OnsiteCallTodo' 
+               and [resolved_at:hcst] > [pickup_date:hcst]     
+               and t.entity_id not in (select reservation_id from reservation_cases) then 1 end) as late_onsites
+  
+  from todos t
+  
+  join reservations r on r.id = t.entity_id
+  
+  where resolved = 't' 
+  and to_char(resolved_at, 'yyww')::numeric =        
+  to_char(current_date, 'yyww')::numeric - 1
+ 
+  
+  group by 1
+    
+  ),
+
+audit_counts as (
+  
+  select 
+    user_id as id
+  , count(case when auditable_type = 'Reservation' and action = 'create' then 1 end) as bookings
+  , count(case when auditable_type = 'Manifest' and action = 'create' then 1 end) as manifests
+  , count(case when auditable_type = 'Note' and a.audited_changes like '%Cancelation reason:%' 
+               and action = 'create' then 1 end) as cancels
+  , count(case when auditable_type = 'Reservation' and (a.audited_changes like '%quote:%'
+               or a.audited_changes like '%vehicle_type_id:%'
+               or a.audited_changes like '%pickup_date:%')
+               and action = 'update' then 1 end) as modifications 
+  
+  from audits a
+  
+  where to_char(created_at, 'yyww')::numeric = to_char(current_date, 'yyww')::numeric - 1 
+  
+  group by 1
+    
+),
+
+stoppage as (
+  
+  select
+  u.id as id
+, sum(event-prior)  as delta
+  from  (
+  select
+    user_id
+    , created_at as event
+    , lag(created_at, 1)
+      over (
+        order by user_id, created_at) as prior
+  from audits
+  where user_id is not null) t
+    join users u on u.id=t.user_id and role not in ('accountant', 'sales_agent', 'vendor', 'travel_coordinator', 'driver','manager') and disabled is not true
+where event-prior < interval '4 hours'
+and event-prior > interval '20 minutes'
+and to_char([event:hcst], 'yyww')::numeric = to_char(current_date, 'yyww')::numeric - 1 
+group by 1 order by 2 desc
+  ),
+
+cases as (
+  
+  select 
+  
+    count(distinct rc.id) as cases
+  , to_char(rc.created_at, 'mm-dd') as time
+  
+  from reservation_cases rc
+  
+  join travel_coordination_profile_assignments tcp on tcp.reservation_id = rc.reservation_id
+  join travel_coordination_profiles tc on tc.id = tcp.travel_coordination_profile_id
+  join companies c on c.id = tc.company_id and [c.team_id=team]
+  
+  where to_char(rc.created_at, 'yyww')::numeric = to_char(current_date, 'yyww')::numeric - 1
+  
+  group by 2
+  
+  ),
+
+tot_rez as (
+  
+  select
+  
+    count(distinct r.id) as rez 
+  , to_char(r.pickup_date, 'mm-dd') as time
+  
+  from reservations r
+  
+  join travel_coordination_profile_assignments tcp on tcp.reservation_id = r.id
+  join travel_coordination_profiles tc on tc.id = tcp.travel_coordination_profile_id
+  join companies c on c.id = tc.company_id and [c.team_id=team]
+  join reservation_statuses rs on rs.reservation_id = r.id and rs.canceled is not true
+  
+  where to_char(pickup_date, 'yyww')::numeric = to_char(current_date, 'yyww')::numeric - 1
+  
+  group by 2
+  
+  )
+  
+select  
+
+  u.first_name || ' ' || u.last_name as Agent
+, t.onsites as "Onsite Calls"
+, t.late_onsites as "Late Onsite Calls"
+, t.todos as "Todos"
+, a.bookings as "Bookings"
+, a.manifests as "Manifests"
+, a.cancels as "Cancels"
+, a.modifications as "Updates"
+, null as "Stoppage"
+, null as "Date" 
+, null as "Cases"
+, null as "Resrvations"
+
+from users u
+  
+  left join todo_counts t on t.id = u.id
+  left join audit_counts a on a.id = u.id
+  left join stoppage s on s.id = u.id
+
+ 
+
+where (team_id = 2 and u.role <> 'manager' and u.role <> 'sales_agent')
+
+union
+
+select 
+
+  null as Agent
+, null as "Onsite Calls"
+, null as "Late Onsite Calls"
+, null as "Todos"
+, null as "Bookings"
+, null as "Manifests"
+, null as "Cancels"
+, null as "Updates"
+, null as "Stoppage"
+, to_char(r.pickup_date, 'mm-dd') as "Date"
+, cs.cases as "Cases"
+, rz.rez as "Resrvations"
+
+from reservations r
+
+left join cases cs on cs.time = to_char(r.pickup_date, 'mm-dd')
+left join tot_rez rz on rz.time = to_char(r.pickup_date, 'mm-dd')
+
+where  to_char(pickup_date, 'yyww')::numeric = to_char(current_date, 'yyww')::numeric - 1
+
+order by 10, 1
