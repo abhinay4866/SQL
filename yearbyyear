@@ -1,0 +1,48 @@
+select 
+
+  c.name as company
+--, null as month_total_2016
+--, null as month_total_2017
+, sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_amount end) as year_total_2016
+, sum(case when to_char(r.pickup_date, 'yy') = '17' then fmt_final_amount end) as year_total_2017
+
+, sum(case when to_char(r.pickup_date, 'yy') = '17' then fmt_final_amount end)-
+ sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_amount end) as year_total_comparison
+--, null as month_profit_2016
+--, null as month_profit_2017
+, sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_amount end) 
+- sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_cost end) as year_profit_2016
+, sum(case when to_char(r.pickup_date, 'yy') = '17' then fmt_final_amount end) 
+- sum(case when to_char(r.pickup_date, 'yy') = '17' then fmt_final_cost end) as year_profit_2017
+--, null as month_comparison
+,(sum(case when to_char(r.pickup_date, 'yy') = '17' then fmt_final_amount end) 
+- sum(case when to_char(r.pickup_date, 'yy') = '17' then fmt_final_cost end)) -
+(sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_amount end) 
+- sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_cost end)) as year_profit_comparison
+
+,case when 
+
+sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_amount end) 
+- sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_cost end) = 0 or 
+sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_amount end) 
+- sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_cost end)
+is null then null
+
+else
+
+((sum(case when to_char(r.pickup_date, 'yy') = '17' then fmt_final_amount end) 
+- sum(case when to_char(r.pickup_date, 'yy') = '17' then fmt_final_cost end)) -
+(sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_amount end) 
+- sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_cost end))) /
+
+(sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_amount end) 
+- sum(case when to_char(r.pickup_date, 'yy') = '16' then fmt_final_cost end))end as year_profit_comparison_percentage
+
+from reporting.reservations r
+
+join companies c on c.id = r.company_id and c.team_id = 2
+
+where group_id not in (select id from groups where passenger_count > 20) and to_char(r.pickup_date, 'mm')::integer <= to_char(current_date, 'mm')::integer 
+
+group by 1
+order by 2 desc nulls last
