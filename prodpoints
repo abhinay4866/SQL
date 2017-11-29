@@ -1,0 +1,117 @@
+with booking_points as (
+  
+  select 
+
+    a.user_id as agent
+  , count(s.id) as points
+  
+  from audits a
+  join reservations r on r.id = a.auditable_id
+  join stops s on s.reservation_id = r.id
+  
+  where a.action = 'create' 
+  and a.auditable_type = 'Reservation' 
+  and [a.created_at=daterange]
+  
+  group by 1
+  
+  ),
+
+todo_points as (
+
+  select
+  
+    user_id as agent
+  , sum(case when type = 'AcceptReservationTodo' then 2
+            when type = 'AssignDriverTodo' then 3
+            when type = 'AssignVendorTodo' then 2
+            when type = 'CaseTodo' then 4
+            when type = 'CheckCrossroadsTodo' then 1
+            when type = 'ConfirmCancellationTodo' then 1
+            when type = 'EscalatedCaseTodo' then 5
+            when type = 'FboCallTodo' then 1
+            when type = 'FixFlightInfoTodo' then 1
+            when type = 'FlightCanceledTodo' then 2
+            when type = 'FlightDeviationTodo' then 1
+            when type = 'FlightNotFoundTodo' then 2
+            when type = 'FlubTodo' then 2
+            when type = 'MiaTodo' then 3
+            when type = 'ModificationConfirmationTodo' then 1
+            when type = 'OnsiteCallTodo' then 1
+            when type = 'OnsiteProgramCoordinatorTodo' then 3
+            when type = 'OutcallTodo' then 2
+            when type = 'PassengerOnboardTodo' then 1
+            when type = 'PrepCallTodo' then 1
+            when type = 'PrivateArrivalFlightTrackingTodo' then 2
+            when type = 'ReReleaseReservationTodo' then 1
+            when type = 'ResolveCaseWithVendorTodo' then 6
+            when type = 'TailNumberMissingTodo' then 2
+            when type = 'VendorAssignmentConfirmationTodo' then 1
+            when type = 'VerifyDriverLocationTodo' then 1
+            when type = 'ZendeskTicketTodo' then 4
+            end) as points
+
+  from todos 
+  where [created_at=daterange]
+  
+  group by 1
+
+),
+
+onsite_points as (
+  
+  select
+  
+    g.onsite_program_coordinator_id as agent
+  , sum(g.passenger_count * (case when to_char(end_date - start_date, 'dd')::numeric > 0 then to_char(end_date - start_date, 'dd')::numeric else 1 end)*.5)::integer as points
+  
+  from groups g
+  
+  where g.onsite_program_coordinator_id is not null and [start_date=daterange]
+  
+  group by 1
+ 
+),
+
+manifest_points as (
+  
+  select 
+  
+    a.user_id as agent
+  , count(m.id) + sum(g.passenger_count * .01)::integer  as points
+  
+  from audits a 
+  join manifests m on m.id = a.auditable_id
+  join segments s on s.id = m.segment_id
+  join groups g on g.id = s.group_id
+  
+  where auditable_type = 'Manifest'
+  and action = 'create'
+  and [a.created_at=daterange]
+  
+  group by 1
+  
+)
+  
+select 
+
+  first_name || ' ' || last_name as agents
+, t.name as team
+, u.role as role
+, bp.points as booking_points
+, tp.points as todo_points
+, op.points as onsite_points
+, mp.points as manifest_points
+, coalesce(bp.points,0) + coalesce(tp.points,0) + coalesce(op.points,0) + coalesce(mp.points,0)  as total_points 
+
+from users u
+
+left join teams t on t.id = u.team_id
+left join booking_points bp on bp.agent = u.id 
+left join todo_points tp on tp.agent = u.id
+left join onsite_points op on op.agent = u.id
+left join manifest_points mp on mp.agent = u.id
+
+where [team_id=team] and u.role in ('operator', 'operator_2')
+
+order by 8 desc
