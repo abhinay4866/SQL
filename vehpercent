@@ -1,0 +1,7 @@
+select 
+name 
+,(count(vt.id)*1.0)/((select count(id) from reservations where pickup_date > current_date -365)*1.0)
+from vehicle_types vt join reservations on vehicle_type_id =vt.id
+where pickup_date > current_date -365
+group by 1
+order by count(reservations.id) desc
