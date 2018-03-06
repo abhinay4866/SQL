@@ -1,0 +1,49 @@
+--no_cache
+
+select 
+distinct
+ r.id-- '[' || r.id || '](https://core.savoya.net/#/savoya/reservations/' || r.id || ')' as reservation
+, [r.pickup_date:hcst]
+, v.name as vendor
+, d.first_name || ' ' || d.last_name as driver
+, case when rc.id is null then 'No Case' else 'Case' end as app_deviation
+, case when n_en.id is null then 'No App' else 'App Used' end as en_route
+, case when n_os.id is null then 'No App' else 'App Used' end as onsite
+, case when re.id is not null and n_pob.id is null then 'No Show' 
+       when re.id is null and n_pob.id is null then 'No App' 
+       else 'App Used' end as POB
+, case when re.id is not null and n_drop.id is null then 'No Show' 
+       when re.id is null and n_drop.id is null then 'No App' 
+       else 'App Used' end as drop
+, case when re.id is not null and n_cp.id is null then 'No Show' 
+       when re.id is null and n_cp.id is null then 'No App' 
+       else 'App Used' end as completed
+from reservations r
+
+join vendor_assignments va on va.reservation_id = r.id and [va.vendor_id=vendors] and current is true
+
+join vendors v on v.id = va.vendor_id and mobile_enabled is true
+
+join reservation_statuses rs on rs.reservation_id = r.id and rs.status in ('billed', 'paid', 'finalized', 'completed','billable') and canceled is not true
+
+join drivers d on d.id = va.driver_id
+
+left join notes n_en on n_en.entity_id = r.id and n_en.text in ('Driver has marked start trip in the driver app')
+
+left join notes n_os on n_os.entity_id = r.id and n_os.text in ('Driver has marked onsite in the driver app')
+
+left join notes n_pob on n_pob.entity_id = r.id and n_pob.text in ('Driver has marked passenger onboard in the driver app')
+
+left join notes n_drop on n_drop.entity_id = r.id and n_drop.text in ('Driver has marked passenger dropped in the driver app')
+
+left join notes n_cp on n_cp.entity_id = r.id and n_cp.text in ('Driver has marked complete trip in the driver app')
+
+left join reservation_cases rc on rc.reservation_id = r.id and description = 'Mobile enabled driver did not use app'
+
+left join reservation_events re on re.reservation_id = r.id and re.action in ('release_vehicle')
+
+where r.pickup_date > '6/12/17' and [r.pickup_date=daterange] --to_char(r.pickup_date, 'yy') = to_char(current_date, 'yy')
+
+order by [r.pickup_date:hcst] desc
+                          
+                          --select distinct action from reservation_events
