@@ -1,0 +1,9 @@
+--no_cache
+select longitude, latitude, name from locations l
+
+where l.type in ('City') 
+and latitude::float >= 38.327417 -- Lowest
+and latitude::float <= 38.938806 -- Highest
+and longitude::float >= -90.606564 --Leftist
+and longitude::float <= -89.802524  -- Rightest
+and service_area_id is null
