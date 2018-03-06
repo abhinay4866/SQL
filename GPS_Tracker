@@ -1,0 +1,5 @@
+select row_number() over(order by timestamp asc) as order, dl.latitude,dl.longitude, [timestamp:hcst], case when re.action is null then 'driving' else re.action end as action, speed from driver_locations dl 
+
+left join reservation_events re on re.id = dl.reservation_event_id
+
+where [dl.reservation_id=reservation]
