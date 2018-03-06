@@ -1,0 +1,541 @@
+--no_cache
+--updated 8.10.17
+---total reservations ---
+
+with short_rez as (
+  
+  select 
+  distinct
+    r.id
+  , r.pickup_date
+  , r.created_at
+  , r.vehicle_type_id
+  , va.vendor_id
+  , va.created_at as va_created_at
+  
+  from reservations r
+  join reservation_statuses rs on rs.reservation_id = r.id and rs.canceled is not true 
+                                                           and rs.status in ('billed', 'finalized', 'completed')
+  join vendor_assignments va on va.reservation_id = r.id and va.current is true
+  where r.pickup_date > '12/31/16' and vehicle_type_id not in (13,14)
+  
+  
+  ),
+
+boston_greets as (
+  
+  select 
+  
+  id
+  
+  from short_rez
+  
+  where vehicle_type_id = 13 and vendor_id in (21660, 21652, 21653, 21655, 21659, 21651)
+  
+  ),
+
+total_trips as (
+  
+  select 
+  
+    r.vendor_id as id
+  , count(distinct r.id) as trips
+  
+  
+  from short_rez r 
+        
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 1 month'))                                                         
+  group by 1                          
+  
+  ),
+
+total_trips_last_month as (
+  
+  select 
+  
+    r.vendor_id as id
+  , count(distinct r.id) as trips
+  
+  from short_rez r 
+        
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 2 month'))                                                         
+  group by 1                        
+  
+  ),
+
+
+total_trips_2017 as (
+  
+  select 
+  
+  r.vendor_id as id
+  ,count(distinct r.id) as trips
+  
+  from short_rez r 
+  
+  where date_trunc('month',r.pickup_date) between date_trunc('month',(current_date - interval ' 6 month')) and date_trunc('month',(current_date - interval ' 1 month'))
+                                                         
+  group by 1                          
+  
+  ),
+
+--- vendor case totals ---
+
+onsite_cases as (
+  
+  select 
+  
+  r.id
+  
+  from short_rez r
+  join reservation_cases rc on rc.reservation_id = r.id
+  where r.id in (
+select entity_id from notes where text = 'Onsite marked after pickup time
+Driver marked self onsite')
+    and rc.vendor_fault is true and (rc.compensation_percentage = 0 or rc.compensation_percentage is null) 
+
+and r.id in (
+select 
+r.id
+from reservation_events re
+join short_rez r on r.id = re.reservation_id
+where action = 'driver_onsite'
+and re.created_at between r.pickup_date - interval '10 minutes' and r.pickup_date + interval '10 minutes'
+)
+  
+  group by 1
+  having count(rc.id) = 1),
+
+Vendor_cases as (
+  
+  select 
+  
+    r.vendor_id as id
+  , count(distinct r.id) as trips
+  ,string_agg(distinct '<A href=https://core.savoya.net/#/vendor/reservations/' || r.id || '>' || r.id || '</A>', ', ') as case_url
+  
+  from short_rez r
+  
+  join reservation_cases rc on rc.reservation_id = r.id and rc.vendor_fault  is true
+  join audits a on a.auditable_id = rc.id and auditable_type = 'ReservationCase' and a.user_id not in (24810,29002)
+  
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 1 month'))
+  and description <> 'Mobile enabled driver did not use app'
+  and description <> 'No vendor vehicle was assigned'
+  and r.id not in (select * from onsite_cases)
+  group by 1
+  
+  ),
+
+
+Vendor_cases_last_month as (
+  
+  select 
+  
+    r.vendor_id as id
+  , count(distinct r.id) as trips
+  
+  from short_rez r
+  
+  join reservation_cases rc on rc.reservation_id = r.id and rc.vendor_fault  is true
+  join audits a on a.auditable_id = rc.id and auditable_type = 'ReservationCase' and a.user_id not in (24810,29002)
+  
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 2 month'))
+  and description <> 'Mobile enabled driver did not use app'
+  and description <> 'No vendor vehicle was assigned'
+  and r.id not in (select * from onsite_cases)
+  group by 1
+
+  ),
+
+Vendor_cases_2017 as (
+  
+  select 
+  
+  r.vendor_id as id
+  ,count(distinct r.id) as trips
+  
+  from short_rez r
+  
+  join reservation_cases rc on rc.reservation_id = r.id and rc.vendor_fault is true
+  join audits a on a.auditable_id = rc.id and auditable_type = 'ReservationCase' and a.user_id not in (24810,29002)
+ 
+  where date_trunc('month',r.pickup_date) between date_trunc('month',(current_date - interval ' 6 month')) and date_trunc('month',(current_date - interval ' 1 month'))
+  and description <> 'Mobile enabled driver did not use app'
+  and description <> 'No vendor vehicle was assigned'
+  and r.id not in (select * from onsite_cases)
+  group by 1
+  
+  ),
+
+
+Vendor_onsite as (
+  
+  select 
+  
+    r.vendor_id as id
+  , count(distinct r.id) as trips
+  ,string_agg(distinct '<A href=https://core.savoya.net/#/vendor/reservations/' || r.id || '>' || r.id || '</A>', ', ') as case_url
+  
+  from short_rez r
+  
+  join reservation_cases rc on rc.reservation_id = r.id and rc.vendor_fault  is true
+  
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 1 month'))
+  and description <> 'Mobile enabled driver did not use app'
+  and description <> 'No vendor vehicle was assigned'
+  and r.id in (select * from onsite_cases)
+  group by 1
+  
+  ),
+
+
+Vendor_mobile_last_month as (
+  
+  select 
+  
+    r.vendor_id as id
+  , count(distinct r.id) as trips
+  
+  from short_rez r
+  
+  join reservation_cases rc on rc.reservation_id = r.id and rc.vendor_fault  is true
+  
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 2 month'))
+  and description = 'Mobile enabled driver did not use app'
+  group by 1
+
+  ),
+
+Vendor_mobile as (
+  
+  select 
+  
+    r.vendor_id as id
+  , count(distinct r.id) as trips
+  ,string_agg(distinct '<A href=https://core.savoya.net/#/vendor/reservations/' || r.id || '>' || r.id || '</A>', ', ') as case_url
+  
+  from short_rez r
+  
+  join reservation_cases rc on rc.reservation_id = r.id and rc.vendor_fault  is true
+  
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 1 month'))
+  and description = 'Mobile enabled driver did not use app'
+  group by 1
+  
+  ),
+
+
+Vendor_onsite_last_month as (
+  
+  select 
+  
+    r.vendor_id as id
+  , count(distinct r.id) as trips
+  
+  from short_rez r
+  
+  join reservation_cases rc on rc.reservation_id = r.id and rc.vendor_fault  is true
+  
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 2 month'))
+  and description <> 'Mobile enabled driver did not use app'
+  and description <> 'No vendor vehicle was assigned'
+  and r.id in (select * from onsite_cases)
+  group by 1
+
+  ),
+
+
+--- driver assignment time ---
+last_assign as (
+  
+  select 
+  
+  re.reservation_id as id
+  ,max(updated_at) as updated_at
+  
+  from reservation_events re
+  where action = 'assign_driver'
+  
+  group by 1
+  
+  ),
+
+driver_assign as (
+
+  select 
+
+  r.vendor_id as id
+  ,count(case when r.pickup_date - la.updated_at > '06:00:00' then 1 end) as trips
+  ,coalesce(Count(case when r.pickup_date - va_created_at < '06:00:00' then 1 end),0) as asaps  
+
+  from short_rez r 
+  join last_assign la on la.id=r.id
+  
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 1 month'))
+  
+  group by 1
+
+  ),
+
+driver_assign_last_month as (
+  
+  select 
+
+  r.vendor_id as id
+  ,count(case when r.pickup_date - la.updated_at > '06:00:00' then 1 end) as trips
+  ,coalesce(Count(case when r.pickup_date - va_created_at < '06:00:00' then 1 end),0) as asaps  
+
+  from short_rez r 
+  join last_assign la on la.id=r.id
+  
+
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 2 month'))
+  
+  group by 1
+
+  ),
+  
+driver_assign_2017 as (
+
+  select 
+
+ r.vendor_id as id
+ ,count(case when r.pickup_date - la.updated_at > '06:00:00' then 1 end) as trips
+  ,coalesce(Count(case when r.pickup_date - va_created_at < '06:00:00' then 1 end),0) as asaps  
+
+  from short_rez r 
+  join last_assign la on la.id=r.id
+  
+
+where date_trunc('month',r.pickup_date) between date_trunc('month',(current_date - interval ' 6 month')) and date_trunc('month',(current_date - interval ' 1 month'))
+
+ group by 1
+
+),
+
+auto_closed as  (
+  
+  select 
+  
+    a.auditable_id as id
+ 
+  from audits a
+
+
+where  a.auditable_type = 'ReservationEvent'
+  and a.audited_changes ilike '%closeout%' 
+  and a.user_id is null
+  
+  ),
+
+auto as (
+  
+  select 
+  
+  r.vendor_id as id
+  ,count(distinct re.reservation_id) as trips
+  
+  from short_rez r
+  
+  join reservation_events re on re.reservation_id = r.id and re.action = 'closeout'
+  join auto_closed a on a.id = re.id
+
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval '1 month'))
+  
+   group by 1
+  
+  ),
+
+auto_last_month as (
+  
+  select 
+  
+  r.vendor_id as id
+  ,count(distinct re.reservation_id) as trips
+  
+  from short_rez r
+  
+  join reservation_events re on re.reservation_id = r.id and re.action = 'closeout'
+  join auto_closed a on a.id = re.id
+
+  where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval '2 month'))
+  
+   group by 1
+  
+  ),
+
+auto_2017 as (
+  
+  select 
+  
+  r.vendor_id as id
+  ,count(distinct re.reservation_id) as trips
+  
+  from short_rez r
+  
+  join reservation_events re on re.reservation_id = r.id and re.action = 'closeout'
+  join auto_closed a on a.id = re.id
+
+where date_trunc('month',r.pickup_date) between date_trunc('month',(current_date - interval ' 6 month')) and date_trunc('month',(current_date - interval ' 1 month'))
+  
+   group by 1
+  
+  ),
+
+most_recent_vehicle as (
+  
+  select 
+  max(updated_at)
+  , vendor_assignment_id as id 
+  
+  from vehicle_assignments
+  
+  where created_at > '12/31/16'
+  
+  group by 2
+),
+
+veh_assignment as (
+  
+  select
+
+    va.vendor_id as id
+  , count(most_recent_vehicle.id) as trips
+  , count(most_recent_vehicle.id)::numeric / count(r.id) as pct
+from short_rez r
+join vendor_assignments va on va.reservation_id = r.id and current is true
+  left join  most_recent_vehicle on va.id = most_recent_vehicle.id
+
+where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 1 month'))
+
+group by 1
+  
+  ),
+
+veh_assignment_last_month as (
+  
+  select
+
+    va.vendor_id as id
+  , count(most_recent_vehicle.id) as trips
+  , count(most_recent_vehicle.id)::numeric / count(r.id) as pct
+from short_rez r
+join vendor_assignments va on va.reservation_id = r.id and current is true
+  left join  most_recent_vehicle on va.id = most_recent_vehicle.id
+
+where date_trunc('month',r.pickup_date) = date_trunc('month',(current_date - interval ' 2 month'))
+
+group by 1
+  
+  ),
+
+veh_assignment_2017 as (
+  
+  select
+
+    va.vendor_id as id
+  , count(most_recent_vehicle.id) as trips
+  , count(most_recent_vehicle.id)::numeric / count(r.id) as pct
+from short_rez r
+join vendor_assignments va on va.reservation_id = r.id and current is true
+  left join  most_recent_vehicle on va.id = most_recent_vehicle.id
+
+where date_trunc('month',r.pickup_date) between date_trunc('month',(current_date - interval ' 6 month')) and date_trunc('month',(current_date - interval ' 1 month'))
+
+group by 1
+  
+  )
+
+Select
+
+v.name
+
+,t.trips as "Total Trips"
+
+,c.trips as "Service Deviation Count"
+,(c.trips*1.00)/(t.trips*1.00) as "Deviations Percentage"
+,(cm.trips*1.00)/(tm.trips*1.00) as "Deviations Percentage - Previous Month"
+,(cy.trips*1.00)/(ty.trips*1.00) as "Deviations Percentage - 6 Months"
+
+,vm.trips as "Mobile App Deviation Count"
+,(vm.trips*1.00)/(t.trips*1.00) as "Mobile App Deviations Percentage"
+,(cvm.trips*1.00)/(tm.trips*1.00) as "Mobile App Deviations Percentage - Previous Month"
+
+,vo.trips as "Onsite Deviation Count"
+,(vo.trips*1.00)/(t.trips*1.00) as "Onsite Deviations Percentage"
+,(Cvo.trips*1.00)/(tm.trips*1.00) as "Onsite Deviations Percentage - Previous Month"
+
+,d.trips as "Driver Assigned On Time Count"
+,case when (t.trips - d.asaps) <= 0 then 1 
+else (d.trips*1.00)/((t.trips - d.asaps)*1.00) end as "Driver Assigned Percentage"
+,case when (tm.trips - dm.asaps) <= 0 then 1 else
+(dm.trips*1.00)/((tm.trips-dm.asaps)*1.00) end as "Driver Assigned Percentage - Previous Month"
+,case when (ty.trips - dy.asaps) <= 0 then 1 else
+(dy.trips*1.00)/((ty.trips-dy.asaps)*1.00) end as "Driver Assigned Percentage - 6 Months"
+
+,s.trips as "Auto Closed Count"
+,(s.trips*1.00)/(t.trips*1.00) as "Auto Closed Percentage"
+,(sm.trips*1.00)/(tm.trips*1.00) as "Auto Closed Percentage - Previous Month"
+,(sy.trips*1.00)/(ty.trips*1.00) as "Auto Closed Percentage - 6 Months"
+
+,v.email as "Vendor Email"
+
+,to_char((current_date - interval '1 month'), 'FMMonth, YYYY') as "Report Date"
+,d.asaps
+,v.owner_email
+,c.case_url
+,vo.case_url as onsite_url
+,vm.case_url as mobile_url
+
+,veh.trips as "Vehicle Assignment"
+,veh.pct as "Vehicle Assignment Percentage"
+,vehm.pct as "Vehicle Assignment Percentage - Previous Month"
+,veh17.pct as "Vehicle Assignment Percentage - 6 Months"
+
+,vendor_type
+,owner_first_name 
+
+from vendors v
+
+left join total_trips t on t.id = v.id
+left join total_trips_last_month tm on tm.id = v.id
+left join total_trips_2017 ty on ty.id = v.id
+
+left join vendor_cases c on c.id = v.id
+left join vendor_cases_last_month cm on cm.id = v.id
+left join vendor_cases_2017 cy on cy.id = v.id
+
+left join vendor_mobile vm on vm.id = v.id
+left join vendor_mobile_last_month cvm on cvm.id = v.id
+
+left join Vendor_onsite vo on vo.id = v.id
+left join vendor_onsite_last_month cvo on cvo.id = v.id
+
+left join driver_assign d on d.id = v.id
+left join driver_assign_last_month dm on dm.id = v.id
+left join driver_assign_2017 dy on dy.id = v.id
+
+left join auto s on s.id = v.id
+left join auto_last_month sm on sm.id = v.id
+left join auto_2017 sy on sy.id = v.id
+
+left join veh_assignment veh on veh.id = v.id
+left join veh_assignment_last_month vehm on vehm.id = v.id
+left join veh_assignment_2017 veh17 on veh17.id = v.id
+  
+  
+
+
+where v.vendor_type in ('garage','independent')
+                               and v.inactive is not true 
+                               and left(v.name, 6) <> 'Savoya' 
+                               and v.id not in (21110) 
+                               and t.trips > 0 
+                               and t.trips is not null
+
+order by t.trips desc nulls last
+
+
+
+limit 180
