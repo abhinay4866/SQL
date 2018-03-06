@@ -1,0 +1,68 @@
+WITH vendor_onsite AS (
+
+
+    SELECT
+      DISTINCT
+      r.id,
+      string_agg(n.text, '   |   ') AS text
+
+    FROM reservations r
+      JOIN notes n ON n.entity_id = r.id AND n.type = 'OnsiteNote'
+      JOIN audits a ON a.auditable_id = n.id AND a.auditable_type = 'Note'
+                       AND (a.user_id IN (SELECT user_id
+                                          FROM vendor_users) OR a.user_id IN (SELECT id
+                                                                              FROM users
+                                                                              WHERE role = 'driver'))
+
+    GROUP BY 1
+
+
+), vend_os AS (
+
+    SELECT
+      to_char(r.pickup_date, 'mm/dd/yyyy, HH24MI') AS pu_date,
+      r.id AS rez,
+      v.name AS vendor,
+      d.first_name || ' ' || d.last_name AS driver,
+      vo.text AS text,
+      vendor_type,
+      owner_email,
+      v.email AS email,
+      to_char(current_date - 7, 'FMmm/dd/yyyy') || ' - ' || to_char(current_date, 'FMmm/dd/yyyy') AS date,
+      owner_first_name AS name,
+      row_number()
+      OVER (
+        PARTITION BY v.name
+        ORDER BY random() ) AS row
+
+    FROM reservations r
+
+      JOIN vendor_assignments va ON va.reservation_id = r.id AND va.current IS TRUE
+      JOIN vendors v ON v.id = va.vendor_id AND mobile_enabled IS TRUE AND v.id <> 21377 and v.vendor_type not in ('groundwork')
+      JOIN reservation_statuses rs
+        ON rs.reservation_id = r.id AND canceled IS NOT TRUE AND rs.status IN ('billed', 'completed', 'finalized')
+
+      LEFT JOIN drivers d ON d.id = va.driver_id
+
+      JOIN vendor_onsite vo ON vo.id = r.id
+
+    WHERE pickup_date > current_date - 7
+    ORDER BY 3 ASC, 1 ASC
+
+)
+
+SELECT
+
+  pu_date,
+  rez,
+  vendor,
+  driver,
+  text,
+  vendor_type,
+  owner_email,
+  email,
+  date,
+  name
+
+FROM vend_os
+WHERE row < 7
