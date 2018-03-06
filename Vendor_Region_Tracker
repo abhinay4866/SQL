@@ -1,0 +1,37 @@
+with single_city as (
+  
+  select 
+  
+    sa.id
+  , max(l.id) as loc
+  
+  from service_areas sa 
+  join locations l on l.service_area_id = sa.id
+  and l.type in ('City', 'Airport')
+  and case when len(l.name) < 5 then 
+  left(sa.name,3) = left(l.name,3)
+  else left(sa.name,5) = left(l.name,5) end
+  
+  group by 1  
+  )
+
+select
+
+  sa.name
+, l.name
+, sa.id
+, case when region = 1 then 'east' 
+       when region = 2 then 'west' 
+       else 'unclaimed' end as region
+, l.id
+, l.latitude
+, l.longitude
+
+
+from service_areas sa
+
+join locations l on l.service_area_id = sa.id and l.id in (select loc from single_city)
+left join [vendor_regions] on vendor_regions.id = sa.id
+
+
+where sa.deleted_at is null and l.type in ('Airport', 'City')
