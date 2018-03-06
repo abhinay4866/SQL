@@ -1,0 +1,38 @@
+--no_cache
+
+with vendor_assigned as (
+  
+  select max(id) id, reservation_id from vendor_assignments group by reservation_id
+  
+  )
+
+
+select 
+distinct
+  '[' || v.name || '](https://core.savoya.net/#/savoya/vendors/' || v.id || ')' as Vendor
+, '[' || r.id || '](https://core.savoya.net/#/savoya/reservations/' || r.id || ')' as reservations
+, [r.pickup_date:hcst] as pickup_time_HCST
+, to_char(r.pickup_date :: timestamp at time zone 'UTC' at time zone l.timezone, 'HH24:MI') as pickup_time_Local
+, case when s.address is null then l.iata_code || '-' || l.name
+       else s.address end as pickup
+, case when s2.address is null then l2.iata_code || '-' || l2.name
+       else s2.address end as dropoff
+, rs.status
+
+from vendors v
+join vendor_service_areas vs on vs.vendor_id = v.id and [vs.service_area_id=service_area]
+join vendor_assignments va on va.vendor_id = v.id and current is true--va.id in (select id from vendor_assigned)
+
+join reservations r on r.id = va.reservation_id
+join reservation_statuses rs on rs.reservation_id = r.id and canceled is not true
+join stops s on s.reservation_id = r.id and s.location_type = 'pickup_location'
+join stops s2 on s2.reservation_id = r.id and s2.location_type = 'dropoff_location'
+
+join locations l on l.id = s.location_id 
+join locations l2 on l2.id = s2.location_id 
+join service_areas sa on sa.id = r.service_area_id
+
+where  date_trunc('day',[r.pickup_date:hcst]) between date_trunc('day', current_date) and date_trunc('day', current_date + 7)
+and (left(v.name,3) = 'I/O' or v.vendor_type = 'groundwork')  and v.inactive is not true
+
+order by 1, 3 asc
