@@ -1,0 +1,72 @@
+--no_cache
+
+with private_flights as  (
+  
+  select
+  
+  distinct reservation_id as id from stops join flights f on f.stop_id = stops.id and f.private is true
+ 
+  ),
+
+ comm_flights as  (
+  
+  select
+  
+  distinct reservation_id as id from stops join flights f on f.stop_id = stops.id and f.private is false
+ 
+  ),
+
+checked_rez as (
+
+  select 
+  
+  distinct entity_id as id from notes n where n.text = 'No IO Avail'
+  
+  )
+  
+select 
+
+  '[' || r.id || '](https://core.savoya.net/#/savoya/reservations/' || r.id || ')' as rez
+, to_char([r.pickup_date:hcst], 'mm/dd hh24mi') as pu_time_CST
+, to_char(r.pickup_date :: timestamp at time zone 'UTC' at time zone l.timezone, 'HH24:MI') as local
+, case when s.address is null then l.iata_code
+       else left(s.address,10) end as pickup
+--, case when pf.id is not null then 'pvt' end as pvt
+--, sa.name as service_area
+, case when v.vendor_type in ('independent', 'groundwork') or left(v.name,3) = 'I/O' then 'Ind'
+       when v.vendor_type in ('garage') and left(v.name,3) <> 'I/O' then 'Grg' end as v_type
+, case when va.locked is true then 'Locked'
+       else 'Open' end as locked
+, case when cr.id is not null then 'chkd' end as IO_Chk
+, left(veh.name, 9) as vehicle
+, case when group_id is not null then '[' || group_id || '](https://core.savoya.net/#/savoya/groups/' || group_id || ')'
+       when group_id is null and cf.id is null and pf.id is null then 'Transient'
+       when group_id is null and cf.id is null and pf.id is not null then 'Private'
+       when group_id is null and cf.id is not null and pf.id is null then 'Commercial' end as r_type
+, rs.status
+, case when v.mobile_enabled is not true then 'not'
+       when v.mobile_enabled is true then 'enbl'
+       end as m_enbl
+, v.name as vendor
+
+from reservations r 
+join reservation_statuses rs on rs.reservation_id = r.id and canceled is not true and status not in ('quote')
+join stops s on s.reservation_id = r.id and s.location_type = 'pickup_location'
+--join stops s2 on s2.reservation_id = r.id and s2.location_type = 'dropoff_location'
+--left join flights f on f.stop_id = s.id
+--left join flights f2 on f2.stop_id = s2.id
+join locations l on l.id = s.location_id 
+join service_areas sa on sa.id = r.service_area_id and [sa.id=service_area] and sa.id in 
+     (select vs.service_area_id from vendor_service_areas vs join vendors v on v.id = vs.vendor_id and (v.vendor_type in ('independent') or left(v.name,3) = 'I/O') and inactive is not true )
+
+left join private_flights pf on pf.id = r.id
+left join comm_flights cf on cf.id = r.id
+left join checked_rez cr on cr.id = r.id
+
+left join vendor_assignments va on va.reservation_id = r.id and current is true
+left join vendors v on v.id = va.vendor_id
+join vehicle_types veh on veh.id = r.vehicle_type_id and veh.id not in (6,7)
+
+where [r.pickup_date:hcst] > [current_timestamp:hcst] + interval '2 hours' and date_trunc('day',[r.pickup_date:hcst]) between   date_trunc('day', current_date) and date_trunc('day', current_date + 14)
+
+order by 2 asc
